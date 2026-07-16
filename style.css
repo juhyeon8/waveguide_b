@@ -1,0 +1,41 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #0f1320; color: #e8ebf5;
+  font-family: "Segoe UI", "Malgun Gothic", sans-serif; }
+.app-header { padding: 16px 24px 6px; }
+.app-header h1 { margin: 0 0 6px; font-size: 1.35rem; }
+.subtitle { margin: 0; color: #aab2cf; font-size: 0.9rem; max-width: 900px; line-height: 1.5; }
+
+.tabs { padding: 8px 24px 0; display: flex; gap: 8px; }
+.tab { background: #232a4a; color: #e8ebf5; border: 1px solid #3a4270;
+  border-radius: 8px 8px 0 0; padding: 8px 14px; font-size: 0.9rem; cursor: pointer; }
+.tab.active { background: #2e3766; border-bottom-color: #2e3766; font-weight: 600; }
+
+.app { display: grid; grid-template-columns: 280px 1fr; gap: 16px; padding: 8px 24px 24px; align-items: start; }
+.controls { background: #161b2e; border: 1px solid #2a3050; border-radius: 10px;
+  padding: 16px; position: sticky; top: 16px; }
+.control-group { margin-bottom: 16px; }
+.slider-label { display: flex; justify-content: space-between; font-size: 0.85rem;
+  margin: 12px 0 4px; }
+.readout { color: #ffd479; font-weight: 600; }
+input[type="range"] { width: 100%; }
+#pauseBtn { width: 100%; margin-top: 8px; background: #232a4a; color: #e8ebf5;
+  border: 1px solid #3a4270; border-radius: 6px; padding: 7px; font-size: 0.85rem; cursor: pointer; }
+#pauseBtn:hover { background: #2e3766; }
+.note { font-size: 0.75rem; color: #8892b5; line-height: 1.6; margin-top: 10px; }
+.info { font-size: 0.82rem; color: #c3cae8; line-height: 1.5; margin-top: 8px; }
+.mode-inf-row { display: flex; align-items: center; gap: 7px; margin-top: 10px;
+  font-size: 0.82rem; color: #ffd479; cursor: pointer; }
+.mode-inf-row input[type="checkbox"] { accent-color: #ffd479; width: 15px; height: 15px; cursor: pointer; }
+.mode-inf-caption { display: none; color: #ffd479; margin-top: 8px; }
+
+.panels { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+.panel { background: #161b2e; border: 1px solid #2a3050; border-radius: 10px; padding: 12px 14px; }
+.panel h3 { margin: 0 0 8px; font-size: 0.92rem; color: #d6dcf7; }
+.cv-wrap { position: relative; width: 100%; display: block; }
+.cv-wrap canvas { width: 100%; height: auto; display: block; background: #0a0e1c; border-radius: 6px; }
+#cvInc, #cvScat, #cvTot { aspect-ratio: 520 / 220; }
+#cvGraph { aspect-ratio: 520 / 120; }
+.cv-label { position: absolute; font-size: 0.72rem; line-height: 1; pointer-events: none; white-space: nowrap; }
+.cv-label-center { transform: translateX(-50%); }
+
+@media (max-width: 980px) { .app { grid-template-columns: 1fr; } .controls { position: static; } .panels { grid-template-columns: 1fr; } }
