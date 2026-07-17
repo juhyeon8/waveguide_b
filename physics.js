@@ -40,21 +40,26 @@
   }
 
   // 닫힌 해: 도파관 모드 합 (N=∞ 극한)
-  // 중심 선원(y=y0=yBot+a/2) → 홀수 모드만 기여 (sin(nπ/2) = ±1)
+  // ySrc: 소스의 y좌표 (생략 시 y0 = 벽 사이 중앙)
+  // n번째 모드의 소스항 = sin(nπ·h/a),  h = ySrc − yBot
+  //   h=a/2 → sin(nπ/2): 짝수 모드 0 (중심 선원은 홀수 모드만 여기)
+  //   h=a/4 → n=2 최대,  h=a/6 → n=3 계열 부각
   // 반환 필드는 영상 합 방식과 동일 규격 (H₀⁽¹⁾ 기반, 1/4 인수 없음)
-  // 참조: G_wg = (i/2a) Σ sin_y·sin_y0·e^{ik_zn|dx|}/k_zn,  코드 값 = (4/i)G_wg
-  function computeModeField(Nx, Ny, y0, a, lambda, x0, nMax) {
+  // 참조: G_wg = (i/a) Σ sin_y·sin_y0·e^{ik_zn|dx|}/k_zn,  코드 값 = (4/i)G_wg
+  //   Dirichlet 정규화 고유함수 φ_n = √(2/a)·sin(nπy/a), 1D 그린함수 u_n = (i/2k_zn)·e^{ik_zn|dx|}
+  //   → G_wg = Σ (2/a)·sin·sin·(i/2k_zn)·e^{...} = (i/a) Σ ...  (i/2a 아님)
+  function computeModeField(Nx, Ny, y0, a, lambda, x0, nMax, ySrc) {
     var re = new Float32Array(Nx * Ny);
     var im = new Float32Array(Nx * Ny);
     var k = 2 * Math.PI / lambda;
     var yBot = y0 - a / 2;
+    var h = ((ySrc === undefined) ? y0 : ySrc) - yBot;
     var jBot = Math.round(yBot), jTop = Math.round(y0 + a / 2);
     var span = jTop - jBot;
 
-    for (var n = 1; n <= nMax; n += 2) {
+    for (var n = 1; n <= nMax; n++) {
       var kc_n = n * Math.PI / a;
-      // sin(nπ/2) for odd n: n=1→+1, n=3→-1, n=5→+1, ...
-      var sinNpi2 = (((n - 1) / 2) % 2 === 0) ? 1 : -1;
+      var srcAmp = Math.sin(n * Math.PI * h / a);
       var k2 = k * k, kc2 = kc_n * kc_n;
       var propagating = k2 > kc2;
       var kzn = propagating ? Math.sqrt(k2 - kc2) : 0;
@@ -71,15 +76,15 @@
         var fRe, fIm;
 
         if (propagating) {
-          // 기여: (2/(a·k_zn))·sin(nπ/2)·sin_y·(cos(k_zn·dx) + i·sin(k_zn·dx))
-          var amp = 2 / (a * kzn) * sinNpi2;
+          // 기여: (4/(a·k_zn))·sin(nπh/a)·sin_y·(cos(k_zn·dx) + i·sin(k_zn·dx))
+          var amp = 4 / (a * kzn) * srcAmp;
           fRe = amp * Math.cos(kzn * dx);
           fIm = amp * Math.sin(kzn * dx);
         } else {
-          // 기여: -(2/(a·κ_n))·sin(nπ/2)·sin_y·exp(-κ_n·dx)  [순 허수부]
+          // 기여: -(4/(a·κ_n))·sin(nπh/a)·sin_y·exp(-κ_n·dx)  [순 허수부]
           var expD = Math.exp(-kappan * dx);
           fRe = 0;
-          fIm = -(2 / (a * kappan)) * sinNpi2 * expD;
+          fIm = -(4 / (a * kappan)) * srcAmp * expD;
         }
 
         for (var j = jBot; j <= jTop; j++) {

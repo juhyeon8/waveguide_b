@@ -22,10 +22,11 @@
     return out;
   }
 
-  // n=1 도파관 모드 계수: E(x,j)를 sin(π(j−jBot)/span)에 투영
-  // 차단 시 |c1(x)| ∝ exp(−κx), 전파 시 ≈ 상수
-  function modeCoefficient(field, y0, a) {
+  // n번째 도파관 모드 계수: E(x,j)를 sin(nπ(j−jBot)/span)에 투영 (n 생략 시 1)
+  // 차단 시 |cn(x)| ∝ exp(−κz), 전파 시 ≈ 상수
+  function modeCoefficient(field, y0, a, n) {
     var Nx = field.Nx, Ny = field.Ny, re = field.re, im = field.im;
+    var nn = n || 1;
     var jBot = Math.round(y0 - a / 2);
     var jTop = Math.round(y0 + a / 2);
     var span = jTop - jBot;
@@ -34,7 +35,7 @@
     for (var i = 0; i < Nx; i++) {
       var sumRe = 0, sumIm = 0;
       for (var j = jBot; j <= jTop; j++) {
-        var w = Math.sin(Math.PI * (j - jBot) / span);
+        var w = Math.sin(nn * Math.PI * (j - jBot) / span);
         var idx = i * Ny + j;
         sumRe += re[idx] * w;
         sumIm += im[idx] * w;
@@ -78,13 +79,15 @@
     ctx.moveTo(0, yBot); ctx.lineTo(Nx, yBot);
     ctx.stroke();
 
-    // 가로 눈금 (캔버스 하단 — 위 패널과 같은 x 위치 표시)
-    var mmPerCell = geom.mmPerCell || 2;
-    var cellsPerTick = 50;   // 100 mm 간격
-    var markY1 = Ny - 13, markY2 = Ny - 5;
+    drawXTicks(ctx, Nx, Ny);
+  }
+
+  // 가로 눈금선 (글자는 HTML span — updateOverlays 참고)
+  var CELLS_PER_TICK = 50;          // 셀=1mm → 5 cm 간격
+  function drawXTicks(ctx, W, H) {
     ctx.strokeStyle = '#3a4270'; ctx.lineWidth = 1;
-    for (var cx = 0; cx < Nx; cx += cellsPerTick) {
-      ctx.beginPath(); ctx.moveTo(cx, markY1); ctx.lineTo(cx, markY2); ctx.stroke();
+    for (var cx = 0; cx < W; cx += CELLS_PER_TICK) {
+      ctx.beginPath(); ctx.moveTo(cx, H - 13); ctx.lineTo(cx, H - 5); ctx.stroke();
     }
   }
 
@@ -107,64 +110,73 @@
     if (original) dot(original.x, original.y, '#ffd479');
   }
 
-  // modeArr: Float32Array of |c1(x)|,  x0pos: 소스 x위치 (= 정규화 기준)
-  // kappaThy: 이론 κ(셀⁻¹) | null,  geom: {Nx, mmPerCell, ...}
-  // 가로축은 ①②③ 패널과 동일한 픽셀 매핑 (x셀 = x픽셀)
-  function drawGraph(ctx, modeArr, x0pos, kappaThy, geom) {
-    var W = geom.Nx, H = 120;
-    ctx.clearRect(0, 0, W, H);
-    if (!modeArr) return;
+  // 모드 그래프 log 축 기하 — updateOverlays 의 라벨 위치와 공유
+  var GRAPH = { H: 220, top: 34, bot: 200, decades: 4 };   // 1e0 … 1e-4
+  function graphToY(v) {
+    var floor = Math.pow(10, -GRAPH.decades - 1);
+    var L = Math.log10(v > floor ? v : floor);
+    var y = GRAPH.top + (-L / GRAPH.decades) * (GRAPH.bot - GRAPH.top);
+    return y < GRAPH.top ? GRAPH.top : (y > GRAPH.bot ? GRAPH.bot : y);
+  }
 
-    // 정규화 기준: x0pos 이후 최댓값
-    var baseline = 1e-9;
-    for (var bx = x0pos; bx < modeArr.length; bx++) {
-      if (modeArr[bx] > baseline) baseline = modeArr[bx];
+  // modes: [{ arr: |cn(x)|, color, kappa: 이론 κ(셀⁻¹) | null(전파) }, ...]
+  // 세 모드를 공통 기준(전체 최댓값=1)으로 규격화 → 곡선 높이차 = 모드 세기차
+  // 가로축은 ①②③ 패널과 동일한 픽셀 매핑 (x셀 = x픽셀), 축 글자는 HTML span
+  function drawModeGraph(ctx, modes, x0pos, geom) {
+    var W = geom.Nx, H = GRAPH.H;
+    ctx.clearRect(0, 0, W, H);
+    if (!modes || !modes.length) return;
+
+    // 공통 정규화 기준: 모든 모드 · x0pos 이후의 최댓값
+    var baseline = 1e-12;
+    for (var mi = 0; mi < modes.length; mi++) {
+      var arr = modes[mi].arr;
+      for (var bx = x0pos; bx < arr.length; bx++) if (arr[bx] > baseline) baseline = arr[bx];
     }
     if (baseline < 1e-10) return;
 
-    // y 매핑 (하단 16px을 눈금용으로 확보)
-    function toY(v) {
-      var c = v < 0 ? 0 : v > 1.1 ? 1.1 : v;
-      return (H - 18) - c / 1.1 * (H - 30);
+    // log 격자선
+    ctx.strokeStyle = 'rgba(90,100,150,0.30)'; ctx.lineWidth = 1;
+    for (var e = 0; e <= GRAPH.decades; e++) {
+      var gy = graphToY(Math.pow(10, -e));
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
     }
 
     // x0 위치 수직 점선 마커
     ctx.strokeStyle = 'rgba(255,212,121,0.30)';
     ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
-    ctx.beginPath(); ctx.moveTo(x0pos, 2); ctx.lineTo(x0pos, H - 18);
+    ctx.beginPath(); ctx.moveTo(x0pos, GRAPH.top); ctx.lineTo(x0pos, GRAPH.bot);
     ctx.stroke(); ctx.setLineDash([]);
 
-    // 이론 곡선 (점선, 차단 모드에서만)
-    if (kappaThy) {
-      var normAtRef = modeArr[x0pos] / baseline;
-      ctx.strokeStyle = '#ffd479'; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      for (var t = x0pos; t < W; t++) {
-        var tv = normAtRef * Math.exp(-kappaThy * (t - x0pos));
-        if (t === x0pos) ctx.moveTo(t, toY(tv));
-        else ctx.lineTo(t, toY(tv));
+    // 이론 곡선은 근접장을 지난 x0+20 에서 실측에 맞춤 (κ 피팅 구간 시작점)
+    var anchor = Math.min(x0pos + 20, W - 1);
+
+    for (var m = 0; m < modes.length; m++) {
+      var md = modes[m], a = md.arr;
+      var a0 = a[anchor] / baseline;
+
+      if (a0 > 0) {                                   // 이론 (점선)
+        ctx.strokeStyle = md.color; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (var t = anchor; t < W; t++) {
+          var tv = md.kappa ? a0 * Math.exp(-md.kappa * (t - anchor)) : a0;
+          if (t === anchor) ctx.moveTo(t, graphToY(tv)); else ctx.lineTo(t, graphToY(tv));
+        }
+        ctx.stroke(); ctx.setLineDash([]);
       }
-      ctx.stroke(); ctx.setLineDash([]);
+
+      ctx.strokeStyle = md.color; ctx.lineWidth = 1.8;  // 측정 (실선)
+      ctx.beginPath();
+      var first = true;
+      for (var x = x0pos; x < W; x++) {
+        var v = a[x] / baseline;
+        if (first) { ctx.moveTo(x, graphToY(v)); first = false; }
+        else ctx.lineTo(x, graphToY(v));
+      }
+      ctx.stroke();
     }
 
-    // 측정 곡선 (실선)
-    ctx.strokeStyle = '#7fd6ff'; ctx.lineWidth = 1.8; ctx.beginPath();
-    var first = true;
-    for (var m = x0pos; m < W; m++) {
-      var mv = modeArr[m] / baseline;
-      if (first) { ctx.moveTo(m, toY(mv)); first = false; }
-      else ctx.lineTo(m, toY(mv));
-    }
-    ctx.stroke();
-
-    // 가로 눈금 (①②③ 패널과 동일 x 위치)
-    var mmPerCell = geom.mmPerCell || 2;
-    var cellsPerTick = 50;
-    var markY1 = H - 13, markY2 = H - 5;
-    ctx.strokeStyle = '#3a4270'; ctx.lineWidth = 1;
-    for (var cx = 0; cx < W; cx += cellsPerTick) {
-      ctx.beginPath(); ctx.moveTo(cx, markY1); ctx.lineTo(cx, markY2); ctx.stroke();
-    }
+    drawXTicks(ctx, W, H);
   }
 
   // N=∞ 모드 전용: ③ 전체장에서 도파관 외부를 "계산 영역 밖"으로 마스킹
@@ -192,17 +204,16 @@
   // 도체판·mm 라벨을 HTML span으로 관리 (캔버스 CSS 스케일에 무관하게 선명)
   function updateOverlays(wrappers, geom) {
     var Nx = geom.Nx, Ny = geom.Ny, y0 = geom.y0, a = geom.a;
-    var mmPerCell = geom.mmPerCell || 2;
-    var cellsPerTick = 50;
+    var mmPerCell = geom.mmPerCell || 1;
 
     function clear(w) {
       var els = w.getElementsByClassName('cv-label');
       while (els.length) els[0].parentNode.removeChild(els[0]);
     }
 
-    function mkSpan(w, text, leftPct, topPct, center, color) {
+    function mkSpan(w, text, leftPct, topPct, cls, color) {
       var s = document.createElement('span');
-      s.className = 'cv-label' + (center ? ' cv-label-center' : '');
+      s.className = 'cv-label' + (cls ? ' ' + cls : '');
       s.style.left = leftPct.toFixed(2) + '%';
       s.style.top = topPct.toFixed(2) + '%';
       s.style.color = color;
@@ -210,36 +221,44 @@
       w.appendChild(s);
     }
 
+    // 가로축 눈금 글자 — 10 cm 마다 (눈금선은 5 cm 마다, drawXTicks)
+    function xLabels(w, H, unitText) {
+      var markY = H - 13;
+      mkSpan(w, unitText, 4 / Nx * 100, (markY - 12) / H * 100, 'cv-label-axis', '#8892b5');
+      for (var cx = CELLS_PER_TICK; cx < Nx; cx += CELLS_PER_TICK) {
+        var cm = cx * mmPerCell / 10;
+        if (cm % 10 === 0)
+          mkSpan(w, cm + '', cx / Nx * 100, (markY - 12) / H * 100, 'cv-label-center', '#6a74a0');
+      }
+    }
+
     var yTop = Ny - 1 - (y0 + a / 2);
     var yBot = Ny - 1 - (y0 - a / 2);
-    var markY = Ny - 13;
 
     [wrappers.inc, wrappers.scat, wrappers.tot].forEach(function (w) {
       clear(w);
-      mkSpan(w, '도체판', 4 / Nx * 100, (yTop - 13) / Ny * 100, false, '#9aa6d8');
-      mkSpan(w, '도체판', 4 / Nx * 100, (yBot + 2) / Ny * 100, false, '#9aa6d8');
-      mkSpan(w, 'mm', 4 / Nx * 100, (markY - 12) / Ny * 100, false, '#6a74a0');
-      for (var cx = cellsPerTick; cx < Nx; cx += cellsPerTick) {
-        var mm = cx * mmPerCell;
-        if (mm % 200 === 0)
-          mkSpan(w, mm + '', cx / Nx * 100, (markY - 12) / Ny * 100, true, '#6a74a0');
-      }
+      mkSpan(w, '도체판', 4 / Nx * 100, (yTop - 13) / Ny * 100, null, '#9aa6d8');
+      mkSpan(w, '도체판', 4 / Nx * 100, (yBot + 2) / Ny * 100, null, '#9aa6d8');
+      xLabels(w, Ny, 'cm');
     });
 
-    var Hg = 120, markYg = Hg - 13;
-    clear(wrappers.graph);
-    mkSpan(wrappers.graph, 'mm', 4 / Nx * 100, (markYg - 12) / Hg * 100, false, '#6a74a0');
-    for (var gx = cellsPerTick; gx < Nx; gx += cellsPerTick) {
-      var gmm = gx * mmPerCell;
-      if (gmm % 200 === 0)
-        mkSpan(wrappers.graph, gmm + '', gx / Nx * 100, (markYg - 12) / Hg * 100, true, '#6a74a0');
+    // 모드 그래프 축 — 곡선은 x0 이후에만 그려지므로 왼쪽 여백에 글자를 놓아도 가리지 않음
+    var Hg = GRAPH.H, wg = wrappers.graph;
+    clear(wg);
+    mkSpan(wg, '|cₙ|  모드 계수 크기', 3.4, 50, 'cv-label-ytitle cv-label-axis', '#aab2cf');
+    for (var e = 0; e <= GRAPH.decades; e++) {
+      mkSpan(wg, e === 0 ? '1' : ('1e-' + e), 7.5,
+             graphToY(Math.pow(10, -e)) / Hg * 100, 'cv-label-mid', '#6a74a0');
     }
+    mkSpan(wg, '세로축: 전체장을 모드 sin(nπy/a)에 투영한 계수 |cₙ| — 세 모드 공통 기준(최댓값=1), log 눈금',
+           3.4, 2.5, null, '#8892b5');
+    xLabels(wg, Hg, 'z (진행축, cm)');
   }
 
   var API = { colorForValue: colorForValue, centerlineAmplitude: centerlineAmplitude,
               modeCoefficient: modeCoefficient,
               drawField: drawField, drawPlates: drawPlates,
-              drawSourceDots: drawSourceDots, drawGraph: drawGraph,
+              drawSourceDots: drawSourceDots, drawModeGraph: drawModeGraph,
               drawExternalMask: drawExternalMask,
               updateOverlays: updateOverlays };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
